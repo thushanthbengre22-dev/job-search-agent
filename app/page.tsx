@@ -217,17 +217,17 @@ export default function JobScoutPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* HEADER — matches football chatbot exactly */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 px-6 py-4 backdrop-blur-sm">
+    <div className="flex flex-col">
+      {/* Sub-header — matches football chatbot exactly */}
+      <div className="border-b border-border bg-background/80 px-6 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div className="flex items-center gap-4">
             <a
-              href="https://www.bengredev.com"
+              href="/ai-lab"
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-              Portfolio
+              AI Lab
             </a>
             <div className="h-4 w-[1px] bg-border" />
             <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
@@ -236,10 +236,10 @@ export default function JobScoutPage() {
             </h1>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* MAIN */}
-      <main className="flex-1 px-6 py-8">
+      <div className="flex-1 px-6 py-8">
         <div className="mx-auto max-w-4xl flex flex-col gap-8">
           {/* Description */}
           <p className="text-sm text-muted-foreground">
@@ -318,7 +318,7 @@ export default function JobScoutPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
