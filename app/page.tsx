@@ -162,7 +162,8 @@ export default function JobScoutPage() {
     setStatus("Starting search...");
 
     try {
-      const response = await fetch("/api/search", {
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const response = await fetch(`${basePath}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ titles, skills, locations, email }),
