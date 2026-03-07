@@ -2,162 +2,160 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-import axios from "axios";
+import { redis, checkAndIncrementUsage } from "@/lib/usage";
+import { fetchJobs, Job } from "@/lib/jsearch";
+import { formatEmailHtml } from "@/lib/email";
 
 export const maxDuration = 60;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const redis = Redis.fromEnv();
-
-// 3 searches per email address per day
-const emailRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(3, "24 h"),
-  prefix: "job-scout:email",
-});
-
-// 10 searches per IP per day
+// 20 requests per IP per day (spam protection)
 const ipRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(10, "24 h"),
+  limiter: Ratelimit.slidingWindow(20, "24 h"),
   prefix: "job-scout:ip",
 });
 
-interface Job {
-  job_id: string;
-  job_title: string;
-  employer_name: string;
-  job_city: string;
-  job_state: string;
-  job_is_remote: boolean;
-  job_posted_at_datetime_utc: string;
-  job_description: string;
-  job_apply_link: string;
-}
+// 2 searches per email address per day
+const emailRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(2, "24 h"),
+  prefix: "job-scout:email",
+});
 
-async function fetchJobs(title: string, location: string): Promise<Job[]> {
-  try {
-    const response = await axios.get("https://jsearch.p.rapidapi.com/search", {
-      params: {
-        query: `${title} in ${location}`,
-        page: "1",
-        num_pages: "1",
-        date_posted: "week",
-        remote_jobs_only: "false",
-      },
-      headers: {
-        "X-RapidAPI-Key": process.env.JSEARCH_API_KEY!,
-        "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
-      },
-      timeout: 8000,
-    });
-    return response.data.data || [];
-  } catch {
-    return [];
-  }
+// 50 searches per day for the exempt email
+const exemptEmailRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(50, "24 h"),
+  prefix: "job-scout:exempt-email",
+});
+
+interface ResumeProfile {
+  filename: string;
+  skills: string[];
+  titles: string[];
+  yearsOfExperience: number;
 }
 
 function encode(obj: object): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n");
 }
 
-function formatEmailHtml(digest: string, locations: string[]): string {
-  const lines = digest.split("\n");
-  const htmlLines = lines.map((line) => {
-    if (line.startsWith("##")) return `<h2 style="color:#e2e8f0;margin:24px 0 8px">${line.replace(/^#+\s*/, "")}</h2>`;
-    if (line.startsWith("#")) return `<h1 style="color:#f8fafc;margin:0 0 16px">${line.replace(/^#+\s*/, "")}</h1>`;
-    if (line.match(/^[-*]\s/)) return `<li style="margin:4px 0;color:#cbd5e1">${line.replace(/^[-*]\s/, "")}</li>`;
-    if (line.trim() === "") return "<br/>";
-    return `<p style="margin:4px 0;color:#cbd5e1">${line}</p>`;
-  });
-
-  return `
-    <div style="font-family:system-ui,sans-serif;background:#0f172a;padding:32px;border-radius:12px;max-width:700px;margin:0 auto">
-      <div style="margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #1e293b">
-        <h1 style="color:#f8fafc;margin:0 0 4px;font-size:22px">Job Scout Results</h1>
-        <p style="color:#64748b;margin:0;font-size:14px">
-          Locations: ${locations.join(", ")} &nbsp;·&nbsp; Last 7 days
-        </p>
-      </div>
-      ${htmlLines.join("\n")}
-      <div style="margin-top:32px;padding-top:16px;border-top:1px solid #1e293b;font-size:12px;color:#475569">
-        Sent by Job Scout · <a href="https://www.bengredev.com/ai-lab/job-search-agent" style="color:#3b82f6">Run another search</a>
-      </div>
-    </div>
-  `;
-}
-
 export async function POST(req: NextRequest) {
-  const LIMITS = { titles: 10, skills: 30, locations: 5 };
+  const LIMITS = { titles: 5, skills: 30, locations: 1 };
 
-  let body: { titles: unknown; skills: unknown; locations: unknown; email: unknown };
+  let body: { titles: unknown; skills: unknown; locations: unknown; email: unknown; resumeProfiles: unknown; yearsOfExperience: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { titles, skills, locations, email } = body;
+  const { titles, skills, locations, email, resumeProfiles, yearsOfExperience } = body;
 
   if (
     !Array.isArray(titles) || titles.length === 0 ||
-    !Array.isArray(skills) || skills.length === 0 ||
     !Array.isArray(locations) || locations.length === 0 ||
     typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   ) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  // Rate limit by IP — 10 searches per IP per 24 hours
+  // IP rate limit — 20 requests per IP per day (blocks spammers before any Redis lookup)
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const { success: ipOk } = await ipRatelimit.limit(ip);
   if (!ipOk) {
     return NextResponse.json(
-      { error: "Too many searches from your network. Try again tomorrow." },
+      { error: "Too many requests from your network. Try again tomorrow." },
       { status: 429 }
     );
   }
 
-  // Rate limit by email — 3 searches per email per 24 hours
-  const { success: emailOk } = await emailRatelimit.limit(email as string);
+  const exemptEmail = process.env.EXEMPT_EMAIL;
+
+  // Check allowed email list (exempt email bypasses this)
+  if (email !== exemptEmail) {
+    const isAllowed = await redis.sismember("job-scout:allowed-emails", email as string);
+    if (!isAllowed) {
+      return NextResponse.json(
+        { error: "Your email is not on the allowed list. Contact thushanthbengre22@gmail.com to request access." },
+        { status: 403 }
+      );
+    }
+  }
+
+  // Rate limit by email — exempt email gets 50/day, everyone else gets 2/day
+  const limiter = email === exemptEmail ? exemptEmailRatelimit : emailRatelimit;
+  const { success: emailOk } = await limiter.limit(email as string);
   if (!emailOk) {
-    return NextResponse.json(
-      { error: "Too many searches. You can run up to 3 searches per day per email address." },
-      { status: 429 }
-    );
+    const message = email === exemptEmail
+      ? "Daily limit reached for this email."
+      : "Too many searches. You can run up to 2 searches per day per email address.";
+    return NextResponse.json({ error: message }, { status: 429 });
   }
 
-  const safeTitles = titles.slice(0, LIMITS.titles).map(String);
-  const safeSkills = skills.slice(0, LIMITS.skills).map(String);
-  const safeLocations = locations.slice(0, LIMITS.locations).map(String);
+  const safeTitles = titles.slice(0, LIMITS.titles).map((t) => String(t).slice(0, 100));
+  const safeSkills = Array.isArray(skills) ? skills.slice(0, LIMITS.skills).map((s) => String(s).slice(0, 100)) : [];
+  const safeLocations = locations.slice(0, LIMITS.locations).map((l) => String(l).slice(0, 100));
+  const safeResumeProfiles: ResumeProfile[] = Array.isArray(resumeProfiles)
+    ? (resumeProfiles as ResumeProfile[]).slice(0, 3)
+    : [];
+  const safeYearsOfExperience = typeof yearsOfExperience === "number"
+    ? Math.min(Math.max(0, Math.round(yearsOfExperience)), 20)
+    : 0;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         controller.enqueue(
-          encode({ type: "status", message: `Fetching ${safeTitles.length} job titles in parallel...` })
+          encode({ type: "status", message: `Step 1 of 3 — Searching job boards across ${safeLocations.join(", ")}...` })
         );
 
         const pairs = safeTitles.flatMap((title) =>
           safeLocations.map((location) => ({ title, location }))
         );
 
-        const results = await Promise.all(
-          pairs.map(({ title, location }) => fetchJobs(title, location))
-        );
+        const withinLimit = await checkAndIncrementUsage(pairs.length);
+        if (!withinLimit) {
+          controller.enqueue(
+            encode({ type: "error", message: "Monthly search limit reached. Service will resume next month." })
+          );
+          controller.close();
+          return;
+        }
 
-        const allJobs: Job[] = results.flat();
+        const results: Job[][] = [];
+        for (let i = 0; i < pairs.length; i += 2) {
+          const batch = pairs.slice(i, i + 2);
+          const batchTitles = batch.map((p) => p.title).join(" & ");
+          controller.enqueue(
+            encode({ type: "status", message: `Step 1 of 3 — Searching for: ${batchTitles}...` })
+          );
+          const batchResults = await Promise.all(
+            batch.map(({ title, location }) => fetchJobs(title, location))
+          );
+          results.push(...batchResults);
+          if (i + 2 < pairs.length) await new Promise((r) => setTimeout(r, 300));
+        }
+
         const uniqueJobs = [
-          ...new Map(allJobs.map((j) => [j.job_id, j])).values(),
+          ...new Map(results.flat().map((j) => [j.job_id, j])).values(),
         ];
+
+        if (uniqueJobs.length === 0) {
+          controller.enqueue(
+            encode({ type: "info", message: "No results found for your current search parameters. You may have hit the API rate limit, or there are no matching jobs at this time. Try adjusting your titles or locations — if the issue persists, try again after 24 hours." })
+          );
+          controller.close();
+          return;
+        }
 
         controller.enqueue(
           encode({
             type: "status",
-            message: `Found ${uniqueJobs.length} unique listings. Analyzing with Claude...`,
+            message: `Step 2 of 3 — Found ${uniqueJobs.length} listings. Scoring and filtering with AI (this takes ~20–30s)...`,
           })
         );
 
@@ -165,40 +163,28 @@ export async function POST(req: NextRequest) {
           .slice(0, 20)
           .map(
             (j, i) =>
-              `Job ${i + 1}:
-Title: ${j.job_title}
-Company: ${j.employer_name}
-Location: ${j.job_city}, ${j.job_state} | Remote: ${j.job_is_remote}
-Posted: ${j.job_posted_at_datetime_utc}
-Description: ${j.job_description?.slice(0, 300)}
-Apply: ${j.job_apply_link}`
+              `Job ${i + 1}:\nTitle: ${j.job_title}\nCompany: ${j.employer_name}\nLocation: ${j.job_city}, ${j.job_state} | Remote: ${j.job_is_remote}\nPosted: ${j.job_posted_at_datetime_utc}\nDescription: ${j.job_description?.slice(0, 1500)}\nApply: ${j.job_apply_link}`
           )
           .join("\n\n");
 
-        // Collect Claude output instead of streaming it to the UI
+        const resumeSection = safeResumeProfiles.length > 0
+          ? `\nResume Profiles:\n${safeResumeProfiles.map((r) =>
+              `[${r.filename}]\nSkills: ${r.skills.join(", ")}\nTarget Titles: ${r.titles.join(", ")}`
+            ).join("\n\n")}\n`
+          : "";
+
+        const resumeMatchInstruction = safeResumeProfiles.length > 0
+          ? `6. Best Resume Match: state which uploaded resume filename best fits this role\n7. Resume Tips: 2-3 specific suggestions for that resume based on the JD (what to add, strengthen, or de-emphasize)`
+          : "";
+
         let digest = "";
         const claudeStream = client.messages.stream({
           model: "claude-haiku-4-5-20251001",
-          max_tokens: 2000,
+          max_tokens: 3000,
           messages: [
             {
               role: "user",
-              content: `You are a job search assistant. My skills: ${safeSkills.join(", ")}.
-
-I am looking for roles in: ${safeLocations.join(", ")}, plus fully remote roles. No relocation outside these locations.
-Only show jobs posted in the last 7 days.
-
-Analyze these listings and:
-1. Filter out jobs posted more than 7 days ago
-2. Filter out jobs requiring relocation outside the specified locations/remote
-3. Score each remaining job 1-10 based on match to my skills
-4. Include any job scoring 6 or higher (partial matches welcome)
-5. For each job include: Job Title, Company, Location/Remote, Match Score, Skills Matched, Skills Missing, Apply URL
-
-Jobs:
-${jobList}
-
-Format results clearly, grouped by match score (highest first). Use plain text with clear section breaks.`,
+              content: `You are a job search assistant.\n\nCandidate Profile:\n- Years of Relevant Experience: ${safeYearsOfExperience}${safeYearsOfExperience >= 20 ? "+" : ""}\n- Skills: ${safeSkills.length > 0 ? safeSkills.join(", ") : "Not specified"}\n${resumeSection}\nI am looking for roles in: ${safeLocations.join(", ")}, plus fully remote roles. No relocation outside these locations.\nOnly show jobs posted in the last 7 days.\n\nAnalyze these listings and:\n1. Filter out jobs posted more than 7 days ago\n2. Filter out jobs requiring relocation outside the specified locations/remote\n3. Score each remaining job 1-10 based on match to skills and experience level\n4. Include any job scoring 6 or higher (partial matches welcome)\n5. For each job include: Job Title, Company, Location/Remote, Match Score, Skills Matched, Skills Missing, Apply URL\n${resumeMatchInstruction}\n\nJobs:\n${jobList}\n\nFormat results clearly, grouped by match score (highest first). Use plain text with clear section breaks.`,
             },
           ],
         });
@@ -213,7 +199,7 @@ Format results clearly, grouped by match score (highest first). Use plain text w
         }
 
         controller.enqueue(
-          encode({ type: "status", message: `Sending results to ${email}...` })
+          encode({ type: "status", message: `Step 3 of 3 — Sending results to ${email}...` })
         );
 
         await resend.emails.send({

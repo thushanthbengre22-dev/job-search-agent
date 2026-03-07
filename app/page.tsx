@@ -1,48 +1,16 @@
 "use client";
 
 import { useState, KeyboardEvent } from "react";
-import { ArrowLeft, BriefcaseBusiness } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, X, Upload } from "lucide-react";
 
 const DEFAULT_LOCATIONS = ["Massachusetts"];
 
-const DEFAULT_TITLES = [
-  "Senior Software Engineer",
-  "Full Stack Engineer",
-  "Senior Full-Stack Engineer",
-  "Senior Backend Engineer",
-  "Staff Engineer",
-  "Lead Software Engineer",
-  "Engineering Lead",
-  "Java Developer",
-  "Backend Engineer",
-];
-
-const DEFAULT_SKILLS = [
-  "Java",
-  "TypeScript",
-  "JavaScript",
-  "React",
-  "Micro-frontend Architecture",
-  "Code Splitting",
-  "Virtualization",
-  "Debouncing",
-  "Web Vitals / Frontend Performance Optimization",
-  "Node.js",
-  "Spring Boot",
-  "Microservices",
-  "REST APIs",
-  "AWS",
-  "Kubernetes",
-  "SQL",
-  "Database Optimization",
-  "Agentic AI",
-  "Multi-Agent Systems",
-  "LLM Tool-Calling",
-  "Vercel AI SDK",
-  "Gemini 1.5 Pro",
-  "Tavily API",
-  "Claude",
-];
+interface ResumeProfile {
+  filename: string;
+  skills: string[];
+  titles: string[];
+  yearsOfExperience: number;
+}
 
 function TagInput({
   label,
@@ -109,56 +77,109 @@ function Spinner() {
       fill="none"
       viewBox="0 0 24 24"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
     </svg>
   );
 }
 
 export default function JobScoutPage() {
   const [locations, setLocations] = useState<string[]>(DEFAULT_LOCATIONS);
-  const [titles, setTitles] = useState<string[]>(DEFAULT_TITLES);
-  const [skills, setSkills] = useState<string[]>(DEFAULT_SKILLS);
+  const [titles, setTitles] = useState<string[]>([]);
+  const [skills, setSkills] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
   const [successEmail, setSuccessEmail] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
-  function addLocation(v: string) {
-    if (!locations.includes(v)) setLocations((prev) => [...prev, v]);
+  const [resumes, setResumes] = useState<File[]>([]);
+  const [resumeProfiles, setResumeProfiles] = useState<ResumeProfile[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [yearsOfExperience, setYearsOfExperience] = useState(0);
+
+  function addLocation(v: string) { if (!locations.includes(v) && locations.length < 1) setLocations((p) => [...p, v]); }
+  function removeLocation(i: number) { setLocations((p) => p.filter((_, idx) => idx !== i)); }
+  function addTitle(v: string) { if (!titles.includes(v) && titles.length < 5) setTitles((p) => [...p, v]); }
+  function removeTitle(i: number) { setTitles((p) => p.filter((_, idx) => idx !== i)); }
+  function addSkill(v: string) { if (!skills.includes(v)) setSkills((p) => [...p, v]); }
+  function removeSkill(i: number) { setSkills((p) => p.filter((_, idx) => idx !== i)); }
+
+  function handleFileChange(e: { target: HTMLInputElement }) {
+    setError("");
+    const files = Array.from(e.target.files || []);
+
+    setResumes((prev) => {
+      let updated = [...prev];
+      for (const file of files) {
+        if (file.type !== "application/pdf") {
+          setError(`${file.name} is not a PDF. Only PDF files are supported.`);
+          continue;
+        }
+        if (file.size > 1024 * 1024) {
+          setError(`${file.name} exceeds the 1MB size limit.`);
+          continue;
+        }
+        const existingIndex = updated.findIndex((r) => r.name === file.name);
+        if (existingIndex >= 0) {
+          updated = [...updated];
+          updated[existingIndex] = file;
+        } else if (updated.length < 3) {
+          updated = [...updated, file];
+        } else {
+          setError("Maximum 3 resumes allowed.");
+        }
+      }
+      return updated;
+    });
+
+    e.target.value = "";
   }
-  function removeLocation(i: number) {
-    setLocations((prev) => prev.filter((_, idx) => idx !== i));
+
+  function removeResume(name: string) {
+    setResumes((p) => p.filter((r) => r.name !== name));
+    setResumeProfiles((p) => p.filter((r) => r.filename !== name));
   }
-  function addTitle(v: string) {
-    if (!titles.includes(v)) setTitles((prev) => [...prev, v]);
-  }
-  function removeTitle(i: number) {
-    setTitles((prev) => prev.filter((_, idx) => idx !== i));
-  }
-  function addSkill(v: string) {
-    if (!skills.includes(v)) setSkills((prev) => [...prev, v]);
-  }
-  function removeSkill(i: number) {
-    setSkills((prev) => prev.filter((_, idx) => idx !== i));
+
+  async function parseResumes() {
+    setIsParsing(true);
+    setParseError("");
+    setError("");
+
+    const formData = new FormData();
+    resumes.forEach((file) => formData.append("resumes", file));
+
+    try {
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+      const res = await fetch(`${basePath}/api/parse-resume`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to parse resumes. Please try again.");
+      }
+
+      const data = await res.json();
+      setResumeProfiles(data.profiles);
+      setSkills(data.merged.skills);
+      setTitles(data.merged.titles);
+      setYearsOfExperience(Math.min(data.merged.yearsOfExperience, 20));
+    } catch (err) {
+      setParseError((err as Error).message);
+    } finally {
+      setIsParsing(false);
+    }
   }
 
   async function runSearch() {
     setIsRunning(true);
     setSuccessEmail("");
     setError("");
+    setInfo("");
     setStatus("Starting search...");
 
     try {
@@ -166,7 +187,7 @@ export default function JobScoutPage() {
       const response = await fetch(`${basePath}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titles, skills, locations, email }),
+        body: JSON.stringify({ titles, skills, locations, email, resumeProfiles, yearsOfExperience }),
       });
 
       if (!response.ok) {
@@ -189,23 +210,17 @@ export default function JobScoutPage() {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const event = JSON.parse(line) as {
-              type: string;
-              message?: string;
-              email?: string;
-            };
-            if (event.type === "status" && event.message) {
-              setStatus(event.message);
-            } else if (event.type === "done" && event.email) {
+            const event = JSON.parse(line) as { type: string; message?: string; email?: string };
+            if (event.type === "status" && event.message) setStatus(event.message);
+            else if (event.type === "done" && event.email) {
               setSuccessEmail(event.email);
               setStatus("");
               setEmail("");
-            } else if (event.type === "error" && event.message) {
-              setError(event.message);
-            }
-          } catch {
-            // skip malformed line
-          }
+            } else if (event.type === "info" && event.message) {
+              setInfo(event.message);
+              setStatus("");
+            } else if (event.type === "error" && event.message) setError(event.message);
+          } catch { /* skip malformed line */ }
         }
       }
     } catch (err) {
@@ -219,7 +234,7 @@ export default function JobScoutPage() {
 
   return (
     <div className="flex flex-col">
-      {/* Sub-header — matches football chatbot exactly */}
+      {/* Sub-header */}
       <div className="border-b border-border bg-background/80 px-6 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div className="flex items-center gap-4">
@@ -239,9 +254,10 @@ export default function JobScoutPage() {
         </div>
       </div>
 
-      {/* MAIN */}
+      {/* Main */}
       <div className="flex-1 px-6 py-8">
         <div className="mx-auto max-w-4xl flex flex-col gap-8">
+
           {/* Description */}
           <p className="text-sm text-muted-foreground">
             Finds jobs posted in the last 7 days across your selected locations — in-office, hybrid, or remote.
@@ -252,23 +268,93 @@ export default function JobScoutPage() {
             Results are scored by Claude AI and delivered to your inbox.
           </p>
 
+          {/* Resume Upload */}
+          <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Resumes</h2>
+
+            <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm">
+              <p className="font-medium text-amber-400 mb-1">Privacy Notice</p>
+              <p className="text-amber-300/70">
+                Your resume content is sent to Anthropic&apos;s API for parsing. We do not save your resume — please keep a copy of any files you upload.
+              </p>
+            </div>
+
+            <label className={`flex items-center gap-2 w-fit text-sm font-medium px-4 py-2 rounded-md border border-border transition-colors ${resumes.length >= 3 ? "opacity-40 cursor-not-allowed bg-secondary" : "cursor-pointer bg-secondary hover:bg-secondary/80 text-secondary-foreground"}`}>
+              <Upload className="h-4 w-4" />
+              Upload Resume
+              <input
+                type="file"
+                accept=".pdf"
+                multiple
+                onChange={handleFileChange}
+                className="hidden"
+                disabled={resumes.length >= 3}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Up to 3 resumes · PDF only · Max 1MB each · Same filename replaces existing
+            </p>
+
+            {resumes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {resumes.map((file) => (
+                  <div key={file.name} className="flex items-center justify-between bg-secondary/50 rounded-md px-3 py-2 text-sm">
+                    <span className="text-foreground">{file.name}</span>
+                    <button
+                      onClick={() => removeResume(file.name)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {resumes.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={parseResumes}
+                  disabled={isParsing}
+                  className="flex items-center gap-2 w-fit bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed font-semibold px-5 py-2 rounded-md transition-opacity text-sm"
+                >
+                  {isParsing && <Spinner />}
+                  {isParsing ? "Parsing..." : "Parse Resumes"}
+                </button>
+                {parseError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive px-4 py-3 text-sm flex items-start justify-between gap-3">
+                    <span>{parseError}</span>
+                    <button
+                      onClick={() => setParseError("")}
+                      className="shrink-0 hover:opacity-70 transition-opacity mt-0.5"
+                      aria-label="Dismiss error"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Config card */}
           <div className="flex flex-col gap-8 rounded-lg border border-border bg-card p-6">
             <TagInput
-              label="Locations (States)"
+              label="Location (1 max)"
               tags={locations}
               onAdd={addLocation}
               onRemove={removeLocation}
-              placeholder="Add a state and press Enter (e.g. New York)"
+              placeholder={locations.length >= 1 ? "Remove current location to change" : "Add a state and press Enter (e.g. New York)"}
             />
             <div className="h-[1px] bg-border" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <TagInput
-                label="Job Titles"
+                label="Job Titles (5 max)"
                 tags={titles}
                 onAdd={addTitle}
                 onRemove={removeTitle}
-                placeholder="Add a title and press Enter"
+                placeholder={titles.length >= 5 ? "5 title limit reached" : "Add a title and press Enter"}
               />
               <TagInput
                 label="Skills"
@@ -278,9 +364,34 @@ export default function JobScoutPage() {
                 placeholder="Add a skill and press Enter"
               />
             </div>
+            <div className="h-[1px] bg-border" />
+
+            {/* Years of experience slider */}
+            <div className="flex flex-col gap-3">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                Years of Relevant Experience
+              </h2>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={0}
+                  max={20}
+                  value={yearsOfExperience}
+                  onChange={(e) => setYearsOfExperience(Number(e.target.value))}
+                  className="flex-1 accent-primary"
+                />
+                <span className="text-sm font-semibold text-foreground w-10 text-right">
+                  {yearsOfExperience === 20 ? "20+" : yearsOfExperience}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 years</span>
+                <span>20+ years</span>
+              </div>
+            </div>
           </div>
 
-          {/* Email input + Run button */}
+          {/* Email + Run */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <input
               type="email"
@@ -305,10 +416,31 @@ export default function JobScoutPage() {
             )}
           </div>
 
+          {/* Info */}
+          {info && (
+            <div className="rounded-md border border-blue-500/30 bg-blue-500/10 px-5 py-4 text-sm flex items-start justify-between gap-3">
+              <span className="text-blue-300">{info}</span>
+              <button
+                onClick={() => setInfo("")}
+                className="shrink-0 text-blue-400 hover:opacity-70 transition-opacity mt-0.5"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* Error */}
           {error && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive px-5 py-4 text-sm">
-              {error}
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive px-5 py-4 text-sm flex items-start justify-between gap-3">
+              <span>{error}</span>
+              <button
+                onClick={() => setError("")}
+                className="shrink-0 hover:opacity-70 transition-opacity mt-0.5"
+                aria-label="Dismiss error"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           )}
 
@@ -318,6 +450,7 @@ export default function JobScoutPage() {
               Results sent to <span className="font-semibold">{successEmail}</span>. Check your inbox.
             </div>
           )}
+
         </div>
       </div>
     </div>
