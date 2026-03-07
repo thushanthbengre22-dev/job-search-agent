@@ -38,7 +38,6 @@ export default function RootLayout({
         <Footer />
         <Analytics
           scriptSrc="https://www.bengredev.com/_vercel/insights/script.js"
-          endpoint="https://www.bengredev.com/_vercel/insights/event"
         />
       </body>
     </html>
