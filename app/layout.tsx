@@ -36,7 +36,10 @@ export default function RootLayout({
         <Navbar />
         <main>{children}</main>
         <Footer />
-        <Analytics />
+        <Analytics
+          scriptSrc="/_vercel/insights/script.js"
+          endpoint="/_vercel/insights/event"
+        />
       </body>
     </html>
   );
