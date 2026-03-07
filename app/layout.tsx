@@ -37,8 +37,8 @@ export default function RootLayout({
         <main>{children}</main>
         <Footer />
         <Analytics
-          scriptSrc="/_vercel/insights/script.js"
-          endpoint="/_vercel/insights/event"
+          scriptSrc="https://www.bengredev.com/_vercel/insights/script.js"
+          endpoint="https://www.bengredev.com/_vercel/insights/event"
         />
       </body>
     </html>
