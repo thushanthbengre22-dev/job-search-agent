@@ -4,8 +4,8 @@
   "outputDirectory": ".next",
   "crons": [
     {
-      "path": "/api/cron",
-      "schedule": "0 13 * * *"
+      "path": "/ai-lab/job-search-agent/api/cron",
+      "schedule": "15 16 * * *"
     }
   ]
 }

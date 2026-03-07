@@ -6,19 +6,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "agent": "node agent.js",
-    "schedule": "node scheduler.js"
+    "start": "next start"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.3",
     "axios": "^1.7.0",
-    "dotenv": "^16.4.0",
     "lucide-react": "^0.577.0",
     "next": "^15.5.12",
-    "node-cron": "^3.0.3",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "resend": "^6.9.3",
