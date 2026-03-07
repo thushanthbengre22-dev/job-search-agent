@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
+import Script from "next/script";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import "./globals.css";
@@ -36,8 +36,9 @@ export default function RootLayout({
         <Navbar />
         <main>{children}</main>
         <Footer />
-        <Analytics
-          scriptSrc="https://www.bengredev.com/_vercel/insights/script.js"
+        <Script
+          src="https://www.bengredev.com/_vercel/insights/script.js"
+          strategy="afterInteractive"
         />
       </body>
     </html>
