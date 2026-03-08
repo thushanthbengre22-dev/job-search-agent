@@ -1,46 +1,38 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 
 const navLinks = [
-  { label: "Home", href: "/" },
-  { label: "About", href: "/#about" },
-  { label: "AI Lab", href: "/ai-lab" },
-  { label: "Contact", href: "/#contact" },
+  { label: "Home", href: "https://www.bengredev.com" },
+  { label: "About", href: "https://www.bengredev.com/#about" },
+  { label: "AI Lab", href: "https://www.bengredev.com/ai-lab" },
+  { label: "Contact", href: "https://www.bengredev.com/#contact" },
 ]
 
 export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const pathname = usePathname()
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link
-          href="/"
+        <a
+          href="https://www.bengredev.com"
           className="font-mono text-lg font-bold tracking-tight text-primary"
         >
           {"<bengre />"}
-        </Link>
+        </a>
 
         {/* Desktop Nav */}
         <ul className="hidden items-center gap-8 md:flex">
           {navLinks.map((link) => (
             <li key={link.href}>
-              <Link
+              <a
                 href={link.href}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  (link.href === "/ai-lab" && pathname === "/ai-lab") ||
-                  (link.href === "/" && pathname === "/")
-                    ? "text-primary"
-                    : "text-muted-foreground"
-                }`}
+                className="text-sm font-medium transition-colors hover:text-primary text-muted-foreground"
               >
                 {link.label}
-              </Link>
+              </a>
             </li>
           ))}
         </ul>
@@ -65,18 +57,13 @@ export function Navbar() {
           <ul className="flex flex-col gap-1 px-6 py-4">
             {navLinks.map((link) => (
               <li key={link.href}>
-                <Link
+                <a
                   href={link.href}
                   onClick={() => setIsMobileOpen(false)}
-                  className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary hover:text-primary ${
-                    (link.href === "/ai-lab" && pathname === "/ai-lab") ||
-                    (link.href === "/" && pathname === "/")
-                      ? "text-primary"
-                      : "text-muted-foreground"
-                  }`}
+                  className="block rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary hover:text-primary text-muted-foreground"
                 >
                   {link.label}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>
