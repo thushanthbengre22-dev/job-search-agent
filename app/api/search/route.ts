@@ -5,6 +5,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { redis, checkAndIncrementUsage } from "@/lib/usage";
 import { fetchJobs, Job } from "@/lib/jsearch";
 import { formatEmailHtml } from "@/lib/email";
+import { buildResumePromptSections, ResumeProfile } from "@/lib/resume";
 
 export const maxDuration = 60;
 
@@ -31,13 +32,6 @@ const exemptEmailRatelimit = new Ratelimit({
   limiter: Ratelimit.slidingWindow(50, "24 h"),
   prefix: "job-scout:exempt-email",
 });
-
-interface ResumeProfile {
-  filename: string;
-  skills: string[];
-  titles: string[];
-  yearsOfExperience: number;
-}
 
 function encode(obj: object): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n");
@@ -169,15 +163,7 @@ export async function POST(req: NextRequest) {
           )
           .join("\n\n");
 
-        const resumeSection = safeResumeProfiles.length > 0
-          ? `\nResume Profiles:\n${safeResumeProfiles.map((r) =>
-              `[${r.filename}]\nSkills: ${r.skills.join(", ")}\nTarget Titles: ${r.titles.join(", ")}`
-            ).join("\n\n")}\n`
-          : "";
-
-        const resumeMatchInstruction = safeResumeProfiles.length > 0
-          ? `6. Best Resume Match: state which uploaded resume filename best fits this role\n7. Resume Tips: 2-3 specific suggestions for that resume based on the JD (what to add, strengthen, or de-emphasize)`
-          : "";
+        const { resumeSection, resumeMatchInstruction } = buildResumePromptSections(safeResumeProfiles);
 
         let digest = "";
         const claudeStream = client.messages.stream({
