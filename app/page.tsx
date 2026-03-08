@@ -410,14 +410,25 @@ export default function JobScoutPage() {
               placeholder="your@email.com"
               className="bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors w-72"
             />
-            <button
-              onClick={runSearch}
-              disabled={isRunning || titles.length === 0 || !email}
-              className="flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed font-semibold px-5 py-2.5 rounded-md transition-opacity text-sm whitespace-nowrap"
-            >
-              {isRunning && <Spinner />}
-              {isRunning ? "Searching..." : "Run Search & Send Email"}
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={runSearch}
+                disabled={isRunning || titles.length === 0 || locations.length === 0 || !email}
+                className="flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed font-semibold px-5 py-2.5 rounded-md transition-opacity text-sm whitespace-nowrap"
+              >
+                {isRunning && <Spinner />}
+                {isRunning ? "Searching..." : "Run Search & Send Email"}
+              </button>
+              {!isRunning && (titles.length === 0 || locations.length === 0) && (
+                <p className="text-xs text-muted-foreground">
+                  {titles.length === 0 && locations.length === 0
+                    ? "Add a location and at least one job title — type and press Enter"
+                    : titles.length === 0
+                    ? "Add at least one job title — type and press Enter"
+                    : "Add a location — type and press Enter"}
+                </p>
+              )}
+            </div>
             {status && (
               <span className="text-sm text-muted-foreground flex items-center gap-2">
                 {isRunning && <Spinner />}

@@ -55,12 +55,14 @@ export async function POST(req: NextRequest) {
 
   const { titles, skills, locations, email, resumeProfiles, yearsOfExperience } = body;
 
-  if (
-    !Array.isArray(titles) || titles.length === 0 ||
-    !Array.isArray(locations) || locations.length === 0 ||
-    typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  ) {
-    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  if (!Array.isArray(titles) || titles.length === 0) {
+    return NextResponse.json({ error: "Add at least one job title before searching." }, { status: 400 });
+  }
+  if (!Array.isArray(locations) || locations.length === 0) {
+    return NextResponse.json({ error: "Add a location before searching. Type a state and press Enter." }, { status: 400 });
+  }
+  if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "Enter a valid email address to receive your results." }, { status: 400 });
   }
 
   // IP rate limit — 20 requests per IP per day (blocks spammers before any Redis lookup)
