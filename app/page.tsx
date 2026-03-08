@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, KeyboardEvent } from "react";
+import { useState, useEffect, KeyboardEvent } from "react";
 import { ArrowLeft, BriefcaseBusiness, X, Upload } from "lucide-react";
 
 const DEFAULT_LOCATIONS = ["Massachusetts"];
@@ -94,10 +94,15 @@ export default function JobScoutPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
 
+  const [isAndroid, setIsAndroid] = useState(false);
   const [resumes, setResumes] = useState<File[]>([]);
   const [resumeProfiles, setResumeProfiles] = useState<ResumeProfile[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState("");
+
+  useEffect(() => {
+    setIsAndroid(/android/i.test(navigator.userAgent));
+  }, []);
   const [yearsOfExperience, setYearsOfExperience] = useState(0);
 
   function addLocation(v: string) { if (!locations.includes(v) && locations.length < 1) setLocations((p) => [...p, v]); }
@@ -294,6 +299,11 @@ export default function JobScoutPage() {
             <p className="text-xs text-muted-foreground -mt-2">
               Up to 3 resumes · PDF only · Max 1MB each · Same filename replaces existing
             </p>
+            {isAndroid && (
+              <p className="text-xs text-blue-400/80 -mt-1">
+                Tip: In the file picker, tap <span className="font-medium">Browse</span> or the grid icon to select from Google Drive.
+              </p>
+            )}
 
             {resumes.length > 0 && (
               <div className="flex flex-col gap-2">
