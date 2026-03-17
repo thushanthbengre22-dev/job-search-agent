@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { checkAndIncrementUsage } from "@/lib/usage";
-import { fetchJobs } from "@/lib/jsearch";
+import { fetchJobs, deduplicateJobs } from "@/lib/jsearch";
 import { formatEmailHtml } from "@/lib/email";
 import { parseResumeBase64, mergeProfiles, buildResumePromptSections, ResumeProfile } from "@/lib/resume";
 
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       pairs.map(({ title, location }) => fetchJobs(title, location))
     );
 
-    const uniqueJobs = [...new Map(results.flat().map((j) => [j.job_id, j])).values()];
+    const uniqueJobs = deduplicateJobs(results.flat());
 
     const jobList = uniqueJobs
       .slice(0, 20)

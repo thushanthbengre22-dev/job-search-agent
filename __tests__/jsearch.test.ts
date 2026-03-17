@@ -3,7 +3,7 @@ import axios from "axios";
 
 vi.mock("axios");
 
-import { fetchJobs } from "@/lib/jsearch";
+import { fetchJobs, deduplicateJobs } from "@/lib/jsearch";
 
 const mockJob = {
   job_id: "abc123",
@@ -20,6 +20,41 @@ const mockJob = {
   job_salary_currency: null,
   job_salary_period: null,
 };
+
+describe("deduplicateJobs", () => {
+  it("removes duplicates with the same job_id", () => {
+    const jobs = [mockJob, { ...mockJob }];
+    expect(deduplicateJobs(jobs)).toHaveLength(1);
+  });
+
+  it("removes cross-site duplicates with different job_id but same title/company/city", () => {
+    const linkedInJob = { ...mockJob, job_id: "linkedin-123" };
+    const indeedJob = { ...mockJob, job_id: "indeed-456" };
+    expect(deduplicateJobs([linkedInJob, indeedJob])).toHaveLength(1);
+  });
+
+  it("keeps jobs that differ by company", () => {
+    const job1 = { ...mockJob, job_id: "a1" };
+    const job2 = { ...mockJob, job_id: "b2", employer_name: "Other Corp" };
+    expect(deduplicateJobs([job1, job2])).toHaveLength(2);
+  });
+
+  it("keeps jobs that differ by city", () => {
+    const job1 = { ...mockJob, job_id: "a1" };
+    const job2 = { ...mockJob, job_id: "b2", job_city: "Cambridge" };
+    expect(deduplicateJobs([job1, job2])).toHaveLength(2);
+  });
+
+  it("is case-insensitive when matching title/company/city", () => {
+    const job1 = { ...mockJob, job_id: "a1", job_title: "Software Engineer", employer_name: "Acme Corp", job_city: "Boston" };
+    const job2 = { ...mockJob, job_id: "b2", job_title: "software engineer", employer_name: "ACME CORP", job_city: "BOSTON" };
+    expect(deduplicateJobs([job1, job2])).toHaveLength(1);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(deduplicateJobs([])).toEqual([]);
+  });
+});
 
 describe("fetchJobs", () => {
   beforeEach(() => {

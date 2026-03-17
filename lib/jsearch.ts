@@ -12,6 +12,23 @@ export interface Job {
   job_apply_link: string;
 }
 
+export function deduplicateJobs(jobs: Job[]): Job[] {
+  // First pass: deduplicate by job_id
+  const byId = [...new Map(jobs.map((j) => [j.job_id, j])).values()];
+
+  // Second pass: deduplicate by (title + company + city) to catch the same
+  // posting aggregated from multiple boards (LinkedIn, Indeed, Glassdoor, etc.)
+  const seen = new Set<string>();
+  return byId.filter((j) => {
+    const key = [j.job_title, j.employer_name, j.job_city]
+      .map((s) => (s ?? "").toLowerCase().trim())
+      .join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function fetchJobs(title: string, location: string, attempt = 1): Promise<Job[]> {
   try {
     const response = await axios.get("https://jsearch.p.rapidapi.com/search", {
