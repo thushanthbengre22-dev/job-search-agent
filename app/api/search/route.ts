@@ -40,14 +40,14 @@ function encode(obj: object): Uint8Array {
 export async function POST(req: NextRequest) {
   const LIMITS = { titles: 5, skills: 30, locations: 1 };
 
-  let body: { titles: unknown; skills: unknown; locations: unknown; email: unknown; resumeProfiles: unknown; yearsOfExperience: unknown };
+  let body: { titles: unknown; skills: unknown; locations: unknown; email: unknown; resumeProfiles: unknown; yearsOfExperience: unknown; authorizedWithoutSponsorship: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { titles, skills, locations, email, resumeProfiles, yearsOfExperience } = body;
+  const { titles, skills, locations, email, resumeProfiles, yearsOfExperience, authorizedWithoutSponsorship } = body;
 
   if (!Array.isArray(titles) || titles.length === 0) {
     return NextResponse.json({ error: "Add at least one job title before searching." }, { status: 400 });
@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
   const safeYearsOfExperience = typeof yearsOfExperience === "number"
     ? Math.min(Math.max(0, Math.round(yearsOfExperience)), 20)
     : 0;
+  const safeAuthorizedWithoutSponsorship = authorizedWithoutSponsorship === true;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -166,11 +167,11 @@ export async function POST(req: NextRequest) {
         let digest = "";
         const claudeStream = client.messages.stream({
           model: "claude-haiku-4-5-20251001",
-          max_tokens: 3000,
+          max_tokens: 4096,
           messages: [
             {
               role: "user",
-              content: `You are a job search assistant.\n\nCandidate Profile:\n- Years of Relevant Experience: ${safeYearsOfExperience}${safeYearsOfExperience >= 20 ? "+" : ""}\n- Skills: ${safeSkills.length > 0 ? safeSkills.join(", ") : "Not specified"}\n${resumeSection}\nI am looking for roles in: ${safeLocations.join(", ")}, plus fully remote roles. No relocation outside these locations.\nOnly show jobs posted in the last 7 days.\n\nAnalyze these listings and:\n1. Filter out jobs posted more than 7 days ago\n2. Filter out jobs requiring relocation outside the specified locations/remote\n3. Score each remaining job 1-10 based on match to skills and experience level\n4. Include any job scoring 6 or higher (partial matches welcome)\n5. For each job include: Job Title, Company, Location/Remote, Match Score, Skills Matched, Skills Missing, Apply URL\n${resumeMatchInstruction}\n\nJobs:\n${jobList}\n\nFormat results clearly, grouped by match score (highest first). Use plain text with clear section breaks.`,
+              content: `You are a job search assistant.\n\nCandidate Profile:\n- Years of Relevant Experience: ${safeYearsOfExperience}${safeYearsOfExperience >= 20 ? "+" : ""}\n- Skills: ${safeSkills.length > 0 ? safeSkills.join(", ") : "Not specified"}\n- Authorized to work without sponsorship: ${safeAuthorizedWithoutSponsorship ? "Yes" : "No"}\n${resumeSection}\nI am looking for roles in: ${safeLocations.join(", ")}, plus fully remote roles. No relocation outside these locations.\nOnly show jobs posted in the last 7 days.\n\nAnalyze these listings and:\n1. Filter out jobs posted more than 7 days ago\n2. Filter out jobs requiring relocation outside the specified locations/remote\n3. ${safeAuthorizedWithoutSponsorship ? "The candidate is authorized to work without sponsorship — no sponsorship filtering needed." : "The candidate requires visa sponsorship. If a job description explicitly states it will NOT sponsor visas, or requires candidates to be already authorized to work in the US without sponsorship (e.g. 'must be authorized to work in the US', 'no sponsorship available', 'US citizens or permanent residents only', 'will not sponsor work visas'), filter it out and include it in a clearly labeled 'Filtered Out — Sponsorship Required' section at the end of the email with the reason. If the job description does not mention sponsorship at all, do NOT filter it out."}\n4. Score each remaining job 1-10 based on match to skills and experience level\n5. Include any job scoring 6 or higher (partial matches welcome)\n6. For each job include: Job Title, Company, Location/Remote, Match Score, Skills Matched, Skills Missing, Apply URL\n${resumeMatchInstruction}\n\nJobs:\n${jobList}\n\nFormat results clearly, grouped by match score (highest first). Use plain text with clear section breaks.`,
             },
           ],
         });
