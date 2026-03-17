@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { Ratelimit } from "@upstash/ratelimit";
 import { redis, checkAndIncrementUsage } from "@/lib/usage";
-import { fetchJobs, Job } from "@/lib/jsearch";
+import { fetchJobs, deduplicateJobs, Job } from "@/lib/jsearch";
 import { formatEmailHtml } from "@/lib/email";
 import { buildResumePromptSections, ResumeProfile } from "@/lib/resume";
 
@@ -136,9 +136,7 @@ export async function POST(req: NextRequest) {
           if (i + 2 < pairs.length) await new Promise((r) => setTimeout(r, 300));
         }
 
-        const uniqueJobs = [
-          ...new Map(results.flat().map((j) => [j.job_id, j])).values(),
-        ];
+        const uniqueJobs = deduplicateJobs(results.flat());
 
         if (uniqueJobs.length === 0) {
           controller.enqueue(
