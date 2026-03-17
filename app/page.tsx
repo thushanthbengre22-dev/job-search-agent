@@ -104,6 +104,7 @@ export default function JobScoutPage() {
     setIsAndroid(/android/i.test(navigator.userAgent));
   }, []);
   const [yearsOfExperience, setYearsOfExperience] = useState(0);
+  const [authorizedWithoutSponsorship, setAuthorizedWithoutSponsorship] = useState(false);
 
   function addLocation(v: string) { if (!locations.includes(v) && locations.length < 1) setLocations((p) => [...p, v]); }
   function removeLocation(i: number) { setLocations((p) => p.filter((_, idx) => idx !== i)); }
@@ -192,7 +193,7 @@ export default function JobScoutPage() {
       const response = await fetch(`${basePath}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titles, skills, locations, email, resumeProfiles, yearsOfExperience }),
+        body: JSON.stringify({ titles, skills, locations, email, resumeProfiles, yearsOfExperience, authorizedWithoutSponsorship }),
       });
 
       if (!response.ok) {
@@ -398,6 +399,31 @@ export default function JobScoutPage() {
                 <span>0 years</span>
                 <span>20+ years</span>
               </div>
+            </div>
+
+            <div className="h-[1px] bg-border" />
+
+            {/* Work authorization */}
+            <div className="flex flex-col gap-2">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                Work Authorization
+              </h2>
+              <label className="flex items-start gap-3 cursor-pointer group w-fit">
+                <input
+                  type="checkbox"
+                  checked={authorizedWithoutSponsorship}
+                  onChange={(e) => setAuthorizedWithoutSponsorship(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-primary cursor-pointer"
+                />
+                <span className="text-sm text-foreground leading-snug">
+                  Authorized to work for any US Employer without sponsorship
+                </span>
+              </label>
+              <p className="text-xs text-muted-foreground ml-7">
+                {authorizedWithoutSponsorship
+                  ? "All jobs will be shown — sponsorship restrictions will not be filtered."
+                  : "Jobs that explicitly require US work authorization without sponsorship will be filtered out and noted in your email."}
+              </p>
             </div>
           </div>
 
